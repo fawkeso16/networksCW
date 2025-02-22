@@ -1,1 +1,1 @@
-AudioLib needs to be a folder called 'lib' inside this project folder.
+AudioLib needs to be a folder called 'lib' inside this project folder. Currently code runs 2 threads, sender and reciever. Data is sent encrypted with a very basic encryption, and a very basic authentication key.

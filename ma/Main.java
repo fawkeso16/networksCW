@@ -1,5 +1,6 @@
-public class main {
+public class Main {
     public static void main(String[] args) {
+
         Thread senderThread = new Thread(()  -> {
             try{
                 TextSenderThread.main(new String[]{});
@@ -11,7 +12,7 @@ public class main {
         
         Thread receiverThread = new Thread(() -> {
             try{
-                TextReceiverThread.main(new String[]{}) ;
+                TextRecieverThread.main(new String[]{}) ;
             }
             catch(Exception e){
                 e.printStackTrace();
