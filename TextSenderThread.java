@@ -61,18 +61,24 @@ public class TextSenderThread {
 
         boolean running = true;
 
-        int key = 15;
+        int encryptkey = 15;
+        short authKey = 10;
 
         while (running){    
             try {
                 byte[] buffer = recorder.getBlock();
-                ByteBuffer unwrapEncrypt = ByteBuffer.allocate(buffer.length);
+                ByteBuffer unwrapEncrypt = ByteBuffer.allocate(514);
+
+                //add 2 bit auth key
+                unwrapEncrypt.putShort(authKey);
                 ByteBuffer plainText = ByteBuffer.wrap(buffer);
+                
                 for(int j = 0; j < buffer.length/4; j++){
                     int fourByte = plainText.getInt();
-                    fourByte = fourByte ^ key;
+                    fourByte = fourByte ^ encryptkey;
                     unwrapEncrypt.putInt(fourByte);
                 }
+
                 byte[] encryptedBlock = unwrapEncrypt.array();
                 DatagramPacket packet = new DatagramPacket(encryptedBlock, encryptedBlock.length, clientIP, PORT);
                 sending_socket.send(packet);
