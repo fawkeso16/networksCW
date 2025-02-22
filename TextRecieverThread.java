@@ -11,7 +11,7 @@ import CMPC3M06.AudioPlayer;
 import java.nio.ByteBuffer;
 import java.io.*;
 
-public class TextReceiverThread{
+public class TextRecieverThread{
     
     static DatagramSocket receiving_socket;
     
@@ -39,22 +39,35 @@ public class TextReceiverThread{
         //Main loop.
         
         AudioPlayer player = new AudioPlayer();
-
-        int key = 15;
+        int encryptkey = 15;
+        short actualAuthKey = 10;
 
         boolean running = true;
         while (running){    
             try {
-                byte[] buffer = new byte[512];
+                byte[] buffer = new byte[514];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket.receive(packet);
 
-                ByteBuffer unwrapDecrypt = ByteBuffer.allocate(buffer.length);
+                ByteBuffer gottenKey = ByteBuffer.wrap(buffer,0,2);
+                int authkey = gottenKey.getShort();
+                System.out.println("Received key: " + authkey);
 
-                ByteBuffer cipherText = ByteBuffer.wrap(buffer);
-                for(int j = 0; j < buffer.length/4; j++) {
+                if(authkey == actualAuthKey){
+                    System.out.println("valid key");
+                } else {
+                    System.out.println("Invalid key, packet skipped");
+                    continue;
+                }
+
+                int Length = packet.getLength() - 2;
+                ByteBuffer unwrapDecrypt = ByteBuffer.allocate(Length);
+                //start from end of auth key
+                ByteBuffer cipherText = ByteBuffer.wrap(buffer, 2, Length);
+
+                for(int j = 0; j < Length/4; j++) {
                     int fourByte = cipherText.getInt();
-                    fourByte = fourByte ^ key; 
+                    fourByte = fourByte ^ encryptkey; 
                     unwrapDecrypt.putInt(fourByte);
                 }
 
@@ -68,7 +81,6 @@ public class TextReceiverThread{
             }
         
         }
-
 
         //Close the socket
         receiving_socket.close();
