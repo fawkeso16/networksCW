@@ -1,11 +1,3 @@
-/*
- * TextReceiver.java
- */
-
-/**
- *
- * @author  abj
- */
 import java.net.*;
 import CMPC3M06.AudioPlayer;
 import java.nio.ByteBuffer;
@@ -14,61 +6,65 @@ import uk.ac.uea.cmp.voip.DatagramSocket2;
 import uk.ac.uea.cmp.voip.DatagramSocket3;
 import uk.ac.uea.cmp.voip.DatagramSocket4;
 
-public class TextRecieverThread{
+
+public class TextRecieverThread {
     
-    static DatagramSocket receiving_socket;
-    
-    public static void main(String args[])throws Exception{
-     
-        //***************************************************
-        //Port to open socket on
+    static DatagramSocket4 receiving_socket;
+
+    public static void main(String args[]) throws Exception {
+        
         int PORT = 55557;
-        //***************************************************
-        
-        //***************************************************
-        //Open a socket to receive from on port PORT
-        
-        //DatagramSocket receiving_socket;
-        try{
-		receiving_socket = new DatagramSocket(PORT);
-	} catch (SocketException e){
-                System.out.println("ERROR: TextReceiver: Could not open UDP socket to receive from.");
-		e.printStackTrace();
-                System.exit(0);
-	}
-        //***************************************************
-        
-        //***************************************************
-        //Main loop.
-        
+        try {
+            receiving_socket = new DatagramSocket4(PORT);
+        } catch (SocketException e) {
+            System.out.println("ERROR: TextReceiver: Could not open UDP socket to receive from.");
+            e.printStackTrace();
+            System.exit(0);
+        }
+
         AudioPlayer player = new AudioPlayer();
         int encryptkey = 15;
         short actualAuthKey = 10;
 
         boolean running = true;
-        while (running){    
+
+        long startTime = System.currentTimeMillis();
+        int packetCount = 0;
+        int packetSize = 514; 
+
+        while (running) {    
             try {
-                byte[] buffer = new byte[514];
+                byte[] buffer = new byte[packetSize];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket.receive(packet);
 
-                ByteBuffer gottenKey = ByteBuffer.wrap(buffer,0,2);
-                int authkey = gottenKey.getShort();
-                System.out.println("Received key: " + authkey);
+                long currentTime = System.currentTimeMillis();
+                packetCount++;
 
-                if(authkey == actualAuthKey){
-                    System.out.println("valid key");
-                } else {
-                    System.out.println("Invalid key, packet skipped");
+                //BR FORMULA = PACKET SIZE X PACKET RECIEVED PER SEC / 1000
+                if (currentTime - startTime >= 1000) { 
+                    double bitrate = (packetSize * 8.0 * packetCount) / 1000; // kbps
+                    System.out.println("Current Bitrate: " + bitrate + " kbps");
+
+                    startTime = currentTime;
+                    packetCount = 0;
+                }
+
+                ByteBuffer gottenKey = ByteBuffer.wrap(buffer, 0, 2);
+                int authkey = gottenKey.getShort();
+
+        
+
+                if (authkey != actualAuthKey) {
+                    // System.out.println("Invalid key, packet skipped");
                     continue;
                 }
 
                 int Length = packet.getLength() - 2;
                 ByteBuffer unwrapDecrypt = ByteBuffer.allocate(Length);
-                //start from end of auth key
                 ByteBuffer cipherText = ByteBuffer.wrap(buffer, 2, Length);
 
-                for(int j = 0; j < Length/4; j++) {
+                for (int j = 0; j < Length / 4; j++) {
                     int fourByte = cipherText.getInt();
                     fourByte = fourByte ^ encryptkey; 
                     unwrapDecrypt.putInt(fourByte);
@@ -77,16 +73,12 @@ public class TextRecieverThread{
                 byte[] decryptedBlock = unwrapDecrypt.array();
                 player.playBlock(decryptedBlock);
 
-                
-            } catch (IOException e){
-                System.out.println("ERROR: TextSender: Some random IO error occured!");
+            } catch (IOException e) {
+                System.out.println("ERROR: TextReceiver: Some random IO error occurred!");
                 e.printStackTrace();
             }
-        
         }
 
-        //Close the socket
         receiving_socket.close();
-        //***************************************************
     }
 }

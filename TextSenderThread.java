@@ -17,8 +17,7 @@ import uk.ac.uea.cmp.voip.DatagramSocket4;
 
 public class TextSenderThread {
     
-    static DatagramSocket sending_socket;
-    
+    static DatagramSocket4 sending_socket;
     
     public static void main(String args[]) throws Exception{
     
@@ -43,7 +42,7 @@ public class TextSenderThread {
         
         //DatagramSocket sending_socket;
         try{
-		sending_socket = new DatagramSocket();
+		sending_socket = new DatagramSocket4();
 	} catch (SocketException e){
                 System.out.println("ERROR: TextSender: Could not open UDP socket to send from.");
 		e.printStackTrace();
