@@ -17,7 +17,8 @@ import uk.ac.uea.cmp.voip.DatagramSocket4;
 
 public class TextSenderThread {
     
-    static DatagramSocket2 sending_socket;
+    static DatagramSocket sending_socket;
+
     
     public static void main(String args[]) throws Exception{
     
@@ -33,7 +34,7 @@ public class TextSenderThread {
 	}
    
         try{
-		sending_socket = new DatagramSocket2();
+		sending_socket = new DatagramSocket();
 	} catch (SocketException e){
                 System.out.println("ERROR: TextSender: Could not open UDP socket to send from.");
 		e.printStackTrace();
@@ -44,13 +45,18 @@ public class TextSenderThread {
 
         boolean running = true;
 
-        int encryptkey = 15;
+        short encryptkey = 15;
         short authKey = 10;
+        short packetSequenceNum = 0;
 
+        //packet layout - sequence num, authkey, security key, data
         while (running){    
             try {
+                packetSequenceNum += 1;
                 byte[] buffer = recorder.getBlock();
-                ByteBuffer unwrapEncrypt = ByteBuffer.allocate(514);
+                ByteBuffer unwrapEncrypt = ByteBuffer.allocate(516);
+
+                unwrapEncrypt.putShort(packetSequenceNum);
 
                 //add 2 bit auth key
                 unwrapEncrypt.putShort(authKey);
@@ -65,10 +71,25 @@ public class TextSenderThread {
                 byte[] encryptedBlock = unwrapEncrypt.array();
                 DatagramPacket packet = new DatagramPacket(encryptedBlock, encryptedBlock.length, clientIP, PORT);
                 sending_socket.send(packet);
+                System.out.println("Sent packet " + packetSequenceNum);
+                                
+                sending_socket.setSoTimeout(100);
+                
+                try {
+                    byte[] ackData = new byte[2]; 
+                    DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
+                    System.out.println("Waiting for ACK for packet " + packetSequenceNum);
+                    sending_socket.receive(ackPacket);  
 
+                    ByteBuffer ackBuffer = ByteBuffer.wrap(ackData);
+                    short receivedSeqNum = ackBuffer.getShort();
+                    System.out.println("received ACK for packet: " + receivedSeqNum);       
+                } catch (SocketTimeoutException e) {
+                    System.out.println("No acl received for packet " + packetSequenceNum);
+                }
                 
             } catch (IOException e){
-                System.out.println("ERROR: TextSender: Some random IO error occured!");
+                System.out.println("ERROR: TextSender: Some random IO error occurred!");
                 e.printStackTrace();
             }
         
@@ -76,4 +97,6 @@ public class TextSenderThread {
         sending_socket.close();
         //***************************************************
     }
+
+
 } 
