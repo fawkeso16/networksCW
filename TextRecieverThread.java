@@ -9,13 +9,13 @@ import uk.ac.uea.cmp.voip.DatagramSocket4;
 
 public class TextRecieverThread {
     
-    static DatagramSocket4 receiving_socket;
+    static DatagramSocket2 receiving_socket;
 
     public static void main(String args[]) throws Exception {
         
         int PORT = 55557;
         try {
-            receiving_socket = new DatagramSocket4(PORT);
+            receiving_socket = new DatagramSocket2(PORT);
         } catch (SocketException e) {
             System.out.println("ERROR: TextReceiver: Could not open UDP socket to receive from.");
             e.printStackTrace();
@@ -28,8 +28,8 @@ public class TextRecieverThread {
 
         boolean running = true;
 
-        long startTime = System.currentTimeMillis();
-        int packetCount = 0;
+        long lastIntervalTime = System.currentTimeMillis();
+        int packets = 0;
         int packetSize = 514; 
 
         while (running) {    
@@ -38,22 +38,27 @@ public class TextRecieverThread {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket.receive(packet);
 
+                
                 long currentTime = System.currentTimeMillis();
-                packetCount++;
-
-                //BR FORMULA = PACKET SIZE X PACKET RECIEVED PER SEC / 1000
-                if (currentTime - startTime >= 1000) { 
-                    double bitrate = (packetSize * 8.0 * packetCount) / 1000; // kbps
-                    System.out.println("Current Bitrate: " + bitrate + " kbps");
-
-                    startTime = currentTime;
-                    packetCount = 0;
+                packets++;
+                
+                double totalBitrate = 0;
+                int count = 0;
+                
+                // = packet size * how many per sec / 1000 (for kps)
+                //basically  when wehita second in elapsed time do this
+                if (currentTime - lastIntervalTime >= 1000) { 
+                    double bitrate = (packetSize * 8 * packets) / 1000; 
+                    totalBitrate += bitrate;
+                    count++;
+                    double avgBitrate = totalBitrate / count;
+                    System.out.println("Average Bitrate: " + avgBitrate + " kbps");
+                    lastIntervalTime = currentTime;
+                    packets = 0;
                 }
-
+                
                 ByteBuffer gottenKey = ByteBuffer.wrap(buffer, 0, 2);
                 int authkey = gottenKey.getShort();
-
-        
 
                 if (authkey != actualAuthKey) {
                     // System.out.println("Invalid key, packet skipped");
