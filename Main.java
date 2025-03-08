@@ -6,7 +6,7 @@ public class Main {
                 TextSenderThread.main(new String[]{});
             }
             catch(Exception e){
-                e.printStackTrace();
+                System.err.println("sender thread error");
             }
         });
         
@@ -15,7 +15,8 @@ public class Main {
                 TextRecieverThread.main(new String[]{}) ;
             }
             catch(Exception e){
-                e.printStackTrace();
+                System.err.println("reciever thread error");
+
             }
         });
 
