@@ -31,6 +31,15 @@ public class TextRecieverThread {
     static long lastTimeChecked = System.currentTimeMillis();
     static int packetCount = 0;
 
+
+    public static void main(String args[]) throws Exception {
+
+        socket();
+
+        
+    }
+
+
     private static byte[] generateHMAC(byte[] data, byte[] key) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         SecretKeySpec secretKey = new SecretKeySpec(key, "HmacSHA256");
@@ -38,12 +47,28 @@ public class TextRecieverThread {
         return mac.doFinal(data);
     }
 
-    public static void main(String args[]) throws Exception {
+    private static byte[] Decrypt512ByteData(ByteBuffer audioData , int key) throws Exception {
+        ByteBuffer unwrapDecrypt = ByteBuffer.allocate(512);
+
+        for (int j = 0; j < 512 / 4; j++) {
+            int fourByte = audioData.getInt();
+            fourByte = fourByte ^ key;
+            unwrapDecrypt.putInt(fourByte);
+        }
+        byte[] decryptedBlock = unwrapDecrypt.array();
+        return decryptedBlock;
+
+
+    }
+
+
+
+    public static void socket() throws Exception {
         int PORT = 55557;
         receiving_socket = new DatagramSocket(PORT);
         InetAddress clientIP = InetAddress.getByName("localhost");
 
-        
+       
         Random random = new Random();
         privateKey = BigInteger.valueOf(random.nextInt(21) + 1);
         publicKey = SmallNum.modPow(privateKey, Prime);
@@ -52,7 +77,7 @@ public class TextRecieverThread {
 
         byte[] received = new byte[4];
         DatagramPacket receiverKeyPacket = new DatagramPacket(received, received.length);
-        receiving_socket.receive(receiverKeyPacket);
+        receiving_socket.receive(receiverKeyPacket);  
 
         ByteBuffer pubKeyBuffer = ByteBuffer.wrap(received);
         int receivedPublicKeyInt = pubKeyBuffer.getInt();
@@ -60,13 +85,17 @@ public class TextRecieverThread {
         System.out.println("Receiver received Public Key: " + receivedPublicKey);
 
         sharedSecret = receivedPublicKey.modPow(privateKey, Prime);
-        
+        System.out.println("reciever shared Secret: " + sharedSecret);
+
 
         ByteBuffer keyPacket = ByteBuffer.allocate(4);
         keyPacket.putInt(publicKey.intValue());
         byte[] shared = keyPacket.array();
-        DatagramPacket finalKeyPacket = new DatagramPacket(shared, shared.length, clientIP, PORT);
+
+        DatagramPacket finalKeyPacket = new DatagramPacket(shared, shared.length, receiverKeyPacket.getAddress(), receiverKeyPacket.getPort());
         receiving_socket.send(finalKeyPacket);
+        System.out.println("Receiver sent Public Key: " + publicKey.intValue());
+
 
         byte[] secretBytes = ByteBuffer.allocate(4).putInt(sharedSecret.intValue()).array();
 
@@ -79,7 +108,7 @@ public class TextRecieverThread {
                 byte[] buffer = new byte[548];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket.receive(packet);
-                System.out.println("Received");
+                
 
                 ByteBuffer alldata = ByteBuffer.wrap(buffer, 0, 546);
                 ByteBuffer packetData = ByteBuffer.wrap(alldata.array(), 0, 514);
@@ -98,17 +127,9 @@ public class TextRecieverThread {
                     System.out.println("No auth");
                 }
 
-                int total = packet.getLength() - 34;
-                ByteBuffer cipherText = ByteBuffer.wrap(buffer, 2, total);
-                ByteBuffer unwrapDecrypt = ByteBuffer.allocate(total);
-                for (int j = 0; j < total / 4; j++) {
-                    int fourByte = cipherText.getInt();
-                    fourByte = fourByte ^ encryptkey;
-                    unwrapDecrypt.putInt(fourByte);
-                }
-                byte[] decryptedBlock = unwrapDecrypt.array();
+                ByteBuffer cipherText = ByteBuffer.wrap(buffer, 2, 512);
+                byte[] decryptedBlock = Decrypt512ByteData(cipherText, encryptkey);
                 player.playBlock(decryptedBlock);
-
 
                 
             } catch (IOException e) {
@@ -118,6 +139,8 @@ public class TextRecieverThread {
         }
         receiving_socket.close();
     }
+
+
 
     public static void socket2(String args[]) throws Exception {
         int PORT = 55557;
@@ -242,6 +265,3 @@ public class TextRecieverThread {
     }
 
 }
-
-
-
