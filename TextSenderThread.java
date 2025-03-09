@@ -5,7 +5,6 @@ import CMPC3M06.AudioRecorder;
 import java.util.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.util.Random;
 
 
 import uk.ac.uea.cmp.voip.DatagramSocket2;
@@ -29,8 +28,8 @@ public class TextSenderThread {
     
     public static void main(String args[]) throws Exception {
         socket();
-        
     }
+
 
     private static byte[] generateHMAC(byte[] data, byte[] key) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -39,20 +38,51 @@ public class TextSenderThread {
         return mac.doFinal(data);
     }
 
-    private static byte[] Encrypt512ByteData(ByteBuffer audioData , int key) throws Exception {
-        ByteBuffer encryptedDataBuffer = ByteBuffer.allocate(512); 
 
-        for (int j = 0; j < 512 / 4; j++) {
-            int fourByte = audioData.getInt();
-            fourByte = fourByte ^ key; 
-            encryptedDataBuffer.putInt(fourByte);
+    private static byte[] EncryptData(byte[] audioData, int key,int  other_key) throws Exception {
+        
+    
+        byte[] transposedAudio1 = new byte[512];
+        byte[] transposedAudioPlusXOR1 = new byte[512];
+        byte[] transposedAudio2 = new byte[512];
+        byte[] transposedAudioPlusXOR2 = new byte[512];
+        byte[] finalAudio = new byte[512];
+    
+    
+        int index = 0;
+        int rows = 64, columns = 8;
+        for (int i = 0; i < columns; i++) {
+            for (int j = 0; j < rows; j++) {
+                int newIndex = (j * columns) + i;
+                transposedAudio1[index++] = audioData[newIndex];
+            }
         }
-
-        byte[] encryptedAudioData = encryptedDataBuffer.array();  
-        return encryptedAudioData;
-
+    
+        for (int i = 0; i < 512; i++) {
+            transposedAudioPlusXOR1[i] = (byte) (transposedAudio1[i] ^ key);
+        }
+    
+        index = 0;
+        rows = 128;
+        columns = 4;
+        for (int i = 0; i < columns; i++) {
+            for (int j = 0; j < rows; j++) {
+                int newIndex = (j * columns) + i;
+                transposedAudio2[index++] = transposedAudioPlusXOR1[newIndex];
+            }
+        }
+    
+        for (int i = 0; i < 512; i++) {
+            transposedAudioPlusXOR2[i] = (byte) (transposedAudio2[i] ^ other_key);
+        }
+    
+        for (int i = 0; i < 512; i++) {
+            int newIndex = (i + key) % 512;
+            finalAudio[newIndex] = transposedAudioPlusXOR2[i];
+            }
+    
+        return finalAudio;
     }
-
 
 
     public static void socket() throws Exception {
@@ -101,8 +131,12 @@ public class TextSenderThread {
 
         AudioRecorder recorder = new AudioRecorder();
         boolean running = true;
-        short encryptkey = 15;
         short packetSequenceNum = 0;
+        
+        int key = sharedSecret.intValue();
+        int nextadd = (int)(Math.log(key) / Math.log(2));
+        int rawNewKey = (nextadd + 1) * key * (key * key - (4 * key) - 1);
+        int newKey = Math.abs(rawNewKey) % 65536; 
     
         while (running) {
             try {
@@ -114,11 +148,9 @@ public class TextSenderThread {
                 packetSequenceNum++;
                 packetBuffer1.putShort(packetSequenceNum);
 
-                ByteBuffer plainText1 = ByteBuffer.wrap(audio1);
-                
-                byte[] encryptedAudioData = Encrypt512ByteData(plainText1, encryptkey);
 
-                byte[] secretBytes = ByteBuffer.allocate(4).putInt(sharedSecret.intValue()).array();
+                byte[] encryptedAudioData = EncryptData(audio1, key, newKey);
+                byte[] secretBytes = ByteBuffer.allocate(4).putInt(key).array();
                 byte[] hmac = generateHMAC(encryptedAudioData, secretBytes); 
 
                 ByteBuffer finalPacketBuffer = ByteBuffer.allocate(514 + hmac.length); 

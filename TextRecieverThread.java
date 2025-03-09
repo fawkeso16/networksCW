@@ -33,10 +33,8 @@ public class TextRecieverThread {
 
 
     public static void main(String args[]) throws Exception {
+        socketWithDecrypt();
 
-        socket();
-
-        
     }
 
 
@@ -47,23 +45,137 @@ public class TextRecieverThread {
         return mac.doFinal(data);
     }
 
-    private static byte[] Decrypt512ByteData(ByteBuffer audioData , int key) throws Exception {
-        ByteBuffer unwrapDecrypt = ByteBuffer.allocate(512);
 
-        for (int j = 0; j < 512 / 4; j++) {
-            int fourByte = audioData.getInt();
-            fourByte = fourByte ^ key;
-            unwrapDecrypt.putInt(fourByte);
+    private static byte[] DecryptData(byte[] encryptedAudioData, int key,int other_key) throws Exception {
+        
+    
+        byte[] shifted = new byte[512];
+        byte[] transposedAudioXOR2 = new byte[512];
+        byte[] transposedAudio2 = new byte[512];
+        byte[] transposedAudioXOR = new byte[512];
+        byte[] original = new byte[512];
+    
+
+    
+        for (int i = 0; i < 512; i++) {
+            int newIndex = ((i - key + 512) % 512); 
+            shifted[newIndex] = encryptedAudioData[i];
         }
-        byte[] decryptedBlock = unwrapDecrypt.array();
-        return decryptedBlock;
+    
+        for (int i = 0; i < shifted.length; i++) {
+            transposedAudioXOR2[i] = (byte) (shifted[i] ^ other_key);
+        }
+    
+        int index = 0;
+        int rows = 128, columns = 4;
+        for (int i = 0; i < columns; i++) {
+            for (int j = 0; j < rows; j++) {
+                int newIndex = (j * columns) + i;
+                transposedAudio2[newIndex] = transposedAudioXOR2[index++];
+            }
+        }
+    
+        for (int i = 0; i < transposedAudio2.length; i++) {
+            transposedAudioXOR[i] = (byte) (transposedAudio2[i] ^ key);
+        }
+    
+        index = 0;
+        rows = 64;
+        columns = 8;
+        for (int i = 0; i < columns; i++) {
+            for (int j = 0; j < rows; j++) {
+                int newIndex = (j * columns) + i;
+                original[newIndex] = transposedAudioXOR[index++];
+            }
+        }
+    
+        return original;
+    }
+    
 
 
+    public static void socketWithDecrypt() throws Exception {
+        int PORT = 55557;
+        receiving_socket = new DatagramSocket(PORT);
+        InetAddress clientIP = InetAddress.getByName("localhost");
+
+       
+        Random random = new Random();
+        privateKey = BigInteger.valueOf(random.nextInt(21) + 1);
+        publicKey = SmallNum.modPow(privateKey, Prime);
+        System.out.println("Receiver Private Key: " + privateKey);
+        System.out.println("Receiver Public Key: " + publicKey);
+
+        byte[] received = new byte[4];
+        DatagramPacket receiverKeyPacket = new DatagramPacket(received, received.length);
+        receiving_socket.receive(receiverKeyPacket);  
+
+        ByteBuffer pubKeyBuffer = ByteBuffer.wrap(received);
+        int receivedPublicKeyInt = pubKeyBuffer.getInt();
+        BigInteger receivedPublicKey = BigInteger.valueOf(receivedPublicKeyInt);
+        System.out.println("Receiver received Public Key: " + receivedPublicKey);
+
+        sharedSecret = receivedPublicKey.modPow(privateKey, Prime);
+        System.out.println("reciever shared Secret: " + sharedSecret);
+
+
+        ByteBuffer keyPacket = ByteBuffer.allocate(4);
+        keyPacket.putInt(publicKey.intValue());
+        byte[] shared = keyPacket.array();
+
+        DatagramPacket finalKeyPacket = new DatagramPacket(shared, shared.length, receiverKeyPacket.getAddress(), receiverKeyPacket.getPort());
+        receiving_socket.send(finalKeyPacket);
+        System.out.println("Receiver sent Public Key: " + publicKey.intValue());
+
+
+        byte[] secretBytes = ByteBuffer.allocate(4).putInt(sharedSecret.intValue()).array();
+
+        AudioPlayer player = new AudioPlayer();
+        int highestSeqNum = 0;
+
+        int key = sharedSecret.intValue();
+        int nextadd = (int)(Math.log(key) / Math.log(2));
+        int rawNewKey = (nextadd + 1) * key * (key * key - (4 * key) - 1);
+        int newKey = Math.abs(rawNewKey) % 65536; 
+
+        while (highestSeqNum < 1000) {
+            try {
+                byte[] buffer = new byte[548];
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                receiving_socket.receive(packet);
+                
+
+                ByteBuffer alldata = ByteBuffer.wrap(buffer, 0, 546);
+                ByteBuffer packetData = ByteBuffer.wrap(alldata.array(), 0, 514);
+                int sequenceNum = packetData.getShort();
+
+                byte[] audioData = new byte[512];
+                ByteBuffer audioBuffer = ByteBuffer.wrap(alldata.array(), 2, 512);
+                audioBuffer.get(audioData);
+
+                byte[] senderhash = new byte[32];
+                ByteBuffer hmacBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
+                hmacBuffer.get(senderhash);
+
+                byte[] reciverhash = generateHMAC(audioData, secretBytes);
+                if (!Arrays.equals(senderhash, reciverhash)) {
+                    System.out.println("No auth");
+                }
+
+                byte[] decryptedBlock = DecryptData(audioData, key,newKey);
+                player.playBlock(decryptedBlock);
+
+                
+            } catch (IOException e) {
+                System.out.println("ERROR: TextReceiver encountered an issue!");
+                e.printStackTrace();
+            }
+        }
+        receiving_socket.close();
     }
 
 
-
-    public static void socket() throws Exception {
+    public static void socketWithoutDecrypt() throws Exception {
         int PORT = 55557;
         receiving_socket = new DatagramSocket(PORT);
         InetAddress clientIP = InetAddress.getByName("localhost");
@@ -127,9 +239,7 @@ public class TextRecieverThread {
                     System.out.println("No auth");
                 }
 
-                ByteBuffer cipherText = ByteBuffer.wrap(buffer, 2, 512);
-                byte[] decryptedBlock = Decrypt512ByteData(cipherText, encryptkey);
-                player.playBlock(decryptedBlock);
+                player.playBlock(audioData);
 
                 
             } catch (IOException e) {
