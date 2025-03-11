@@ -27,20 +27,17 @@ public class TextSenderThread {
 
     
     public static void main(String args[]) throws Exception {
-        socket();
+        socket3();
         // socket2();
     }
 
 
-    private static byte[] generateSimpleMAC(byte[] data, byte[] key) {
-        if (data.length != 512) {
-            throw new IllegalArgumentException("Data must be exactly 512 bytes.");
-        }
+    private static byte[] generateSimpleMAC(byte[] data, int key) {
     
         byte[] xored = new byte[512];
     
         for (int i = 0; i < 512; i++) {
-            xored[i] = (byte) (data[i] ^ key[i % key.length]);
+            xored[i] = (byte) (data[i] ^ key);
         }
     
         byte[] mac = new byte[32];
@@ -167,13 +164,12 @@ public class TextSenderThread {
 
 
                 byte[] encryptedAudioData = EncryptData(audio1, key, newKey);
-                byte[] secretBytes = ByteBuffer.allocate(4).putInt(key).array();
-                byte[] hmac = generateSimpleMAC(encryptedAudioData, secretBytes); 
+                byte[] mac = generateSimpleMAC(encryptedAudioData, sharedSecret.intValue()); 
 
-                ByteBuffer finalPacketBuffer = ByteBuffer.allocate(514 + hmac.length); 
+                ByteBuffer finalPacketBuffer = ByteBuffer.allocate(514 + mac.length); 
                 finalPacketBuffer.putShort(packetSequenceNum);         
                 finalPacketBuffer.put(encryptedAudioData);  
-                finalPacketBuffer.put(hmac);  
+                finalPacketBuffer.put(mac);  
 
                 byte[] finalPacketData = finalPacketBuffer.array();  
 
@@ -235,9 +231,7 @@ public class TextSenderThread {
                 byte[] encryptedBlock1 = packetBuffer1.array();
                 DatagramPacket packet1 = new DatagramPacket(encryptedBlock1, encryptedBlock1.length, clientIP, PORT);
 
-                sending_socket3.send(packet1);  
-                sending_socket3.send(packet1);  
-                // sending_socket3.send(packet1); 
+                
 
 
                 // Packet 2
@@ -254,9 +248,7 @@ public class TextSenderThread {
                 }
                 byte[] encryptedBlock2 = packetBuffer2.array();
                 DatagramPacket packet2 = new DatagramPacket(encryptedBlock2, encryptedBlock2.length, clientIP, PORT);
-                sending_socket3.send(packet2); 
-                sending_socket3.send(packet2);  
-                // sending_socket3.send(packet2);  
+                
 
                 // Packet 3
                 ByteBuffer packetBuffer3 = ByteBuffer.allocate(516);
@@ -272,12 +264,8 @@ public class TextSenderThread {
                 }
                 byte[] encryptedBlock3 = packetBuffer3.array();
                 DatagramPacket packet3 = new DatagramPacket(encryptedBlock3, encryptedBlock3.length, clientIP, PORT);
-                sending_socket3.send(packet3);  
-                sending_socket3.send(packet3);  
-                // sending_socket3.send(packet3);  
+             
 
-
-                // Packet 4
                 ByteBuffer packetBuffer4 = ByteBuffer.allocate(516);
                 packetSequenceNum++;
                 short seqNum4 = packetSequenceNum;
@@ -292,22 +280,40 @@ public class TextSenderThread {
                 byte[] encryptedBlock4 = packetBuffer4.array();
                 DatagramPacket packet4 = new DatagramPacket(encryptedBlock4, encryptedBlock4.length, clientIP, PORT);
 
-                sending_socket3.send(packet4); 
-                sending_socket3.send(packet4); 
-                // sending_socket3.send(packet4); 
+                sending_socket2.send(packet1); 
+                sending_socket2.send(packet1); 
+                sending_socket2.send(packet1); 
 
-                
+                sending_socket2.send(packet3);  
+                sending_socket2.send(packet3); 
+                sending_socket2.send(packet3); 
+
+                sending_socket2.send(packet2);  
+                sending_socket2.send(packet2);  
+                sending_socket2.send(packet2); 
+
+                sending_socket2.send(packet4); 
+                sending_socket2.send(packet4); 
+                sending_socket2.send(packet4); 
+            
+
+            
     } catch (Exception e) {
         e.printStackTrace();
+    } 
+    System.out.println("HashSet contents:");
+
     }
+    sending_socket.close();
 }
-}
+
 
 
 
 public static void socket3() throws Exception {
-    int PORT = 55557;            
+    int PORT = 55557;
     InetAddress clientIP = InetAddress.getByName("localhost");
+    
     try {
         sending_socket3 = new DatagramSocket3();
     } catch (SocketException e) {
@@ -316,49 +322,47 @@ public static void socket3() throws Exception {
         System.exit(0);
     }
 
-
     AudioRecorder recorder = new AudioRecorder();
     boolean running = true;
-    int encryptkey = 2;
-    short authkey = 12;
+
+    short encryptkey = 15;
+    short authKey = 10;
     short packetSequenceNum = 0;
-    
-    while (packetSequenceNum < 1000) {
+
+
+    while (running) {
         try {
-            byte[] block1 = recorder.getBlock();
-            byte[] audio1 = new byte[512];
-            System.arraycopy(block1, 0, audio1, 0, 512);
-
-            ByteBuffer packetBuffer1 = ByteBuffer.allocate(516); 
+            byte[] block1 = recorder.getBlock();  
+                       
+            ByteBuffer packetBuffer1 = ByteBuffer.allocate(516);
             packetSequenceNum++;
-            packetBuffer1.putShort(authkey);
-            packetBuffer1.putShort(packetSequenceNum);
-
-
-            ByteBuffer plainText1 = ByteBuffer.wrap(audio1);
-                for (int j = 0; j < audio1.length / 4; j++) {
-                    int fourByte = plainText1.getInt();
-                    fourByte = fourByte ^ encryptkey;
-                    packetBuffer1.putInt(fourByte);
-                }
+            short seqNum1 = packetSequenceNum;
+            packetBuffer1.putShort(seqNum1);
+            packetBuffer1.putShort(authKey);
+            ByteBuffer plainText1 = ByteBuffer.wrap(block1);
+            for (int j = 0; j < block1.length / 4; j++) {
+                int fourByte = plainText1.getInt();
+                fourByte = fourByte ^ encryptkey;
+                packetBuffer1.putInt(fourByte);
+            }
             byte[] encryptedBlock1 = packetBuffer1.array();
-              
+            DatagramPacket packet1 = new DatagramPacket(encryptedBlock1, encryptedBlock1.length, clientIP, PORT);
 
-            DatagramPacket finalPacket = new DatagramPacket(encryptedBlock1, encryptedBlock1.length, clientIP, PORT);
-            sending_socket3.send(finalPacket);
+            sending_socket3.send(packet1);  
+            // sending_socket3.send(packet1); 
+            sending_socket3.send(packet1);  
             
-
-
-            // System.out.println("sent");
             
-        } catch (IOException e) {
-            System.out.println("ERROR: TextSender: Some random IO error occurred!");
-            e.printStackTrace();
-        }
+        
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+    // System.out.println("sent"+packetSequenceNum);
+
     }
     sending_socket3.close();
-    System.out.println("Packets sent: "+ packetSequenceNum);
-    
-
-    }
 }
+}
+
+
+

@@ -3,8 +3,7 @@ import java.nio.ByteBuffer;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
+
 import java.util.Random;
 import java.util.concurrent.TimeoutException;
 
@@ -35,8 +34,9 @@ public class TextRecieverThread {
 
 
     public static void main(String args[]) throws Exception {
-        socketWithDecrypt();
+        // socketWithDecrypt();
         // socket2();
+        socket3();
 
     }
 
@@ -52,27 +52,24 @@ public class TextRecieverThread {
     
 
 
-    private static byte[] generateSimpleMAC(byte[] data, byte[] key) {
-        if (data.length != 512) {
-            throw new IllegalArgumentException("Data must be exactly 512 bytes.");
-        }
+    //xor our data with our key, then take thencreate a 32byte array of data consisting of every other bytes first bit.
+    private static byte[] generateSimpleMAC(byte[] data, int key) {
+
     
         byte[] xored = new byte[512];
     
-        // XOR each byte of data with the key (cycling if key is shorter)
         for (int i = 0; i < 512; i++) {
-            xored[i] = (byte) (data[i] ^ key[i % key.length]);
+            xored[i] = (byte) (data[i] ^ key);
         }
     
         byte[] mac = new byte[32];
         int bitIndex = 0;
     
-        // Extract first bit of every other byte
         for (int i = 0; i < 512; i += 2) {
-            int bit = (xored[i] >> 7) & 1; // Get MSB (first bit)
-            mac[bitIndex / 8] |= (bit << (7 - (bitIndex % 8))); // Pack bits into bytes
+            int bit = (xored[i] >> 7) & 1; 
+            mac[bitIndex / 8] |= (bit << (7 - (bitIndex % 8))); 
             bitIndex++;
-            if (bitIndex == 256) break; // Stop after 256 bits (32 bytes)
+            if (bitIndex == 256) break; 
         }
     
         return mac;
@@ -87,8 +84,6 @@ public class TextRecieverThread {
         byte[] transposedAudio2 = new byte[512];
         byte[] transposedAudioXOR = new byte[512];
         byte[] original = new byte[512];
-    
-
     
         for (int i = 0; i < 512; i++) {
             int newIndex = ((i - key + 512) % 512); 
@@ -186,12 +181,12 @@ public class TextRecieverThread {
                 ByteBuffer audioBuffer = ByteBuffer.wrap(alldata.array(), 2, 512);
                 audioBuffer.get(audioData);
 
-                byte[] senderhash = new byte[32];
-                ByteBuffer hmacBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
-                hmacBuffer.get(senderhash);
+                byte[] sendermac = new byte[32];
+                ByteBuffer macBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
+                macBuffer.get(sendermac);
 
-                byte[] reciverhash = generateSimpleMAC(audioData, secretBytes);
-                if (!Arrays.equals(senderhash, reciverhash)) {
+                byte[] reciver = generateSimpleMAC(audioData, sharedSecret.intValue());
+                if (!Arrays.equals(sendermac, reciver)) {
                     System.out.println("No auth");
                 }
 
@@ -263,15 +258,11 @@ public class TextRecieverThread {
                 ByteBuffer audioBuffer = ByteBuffer.wrap(alldata.array(), 2, 512);
                 audioBuffer.get(audioData);
 
-                byte[] senderhash = new byte[32];
-                ByteBuffer hmacBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
-                hmacBuffer.get(senderhash);
+                byte[] sendermac = new byte[32];
+                ByteBuffer macBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
+                macBuffer.get(sendermac);
 
-                // byte[] reciverhash = generateSimpleMAC(audioData, secretBytes);
-                // if (!Arrays.equals(senderhash, reciverhash)) {
-                //     System.out.println("No auth");
-                // }
-
+                
                 player.playBlock(audioData);
 
                 
@@ -287,7 +278,7 @@ public class TextRecieverThread {
 
     public static void socket2() throws Exception {
         int PORT = 55557;
-        receiving_socket3 = new DatagramSocket3(PORT);
+        receiving_socket2 = new DatagramSocket2(PORT);
     
         AudioPlayer player = new AudioPlayer();
         int encryptkey = 15;
@@ -307,7 +298,7 @@ public class TextRecieverThread {
             try {
                 byte[] buffer = new byte[516];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                receiving_socket3.receive(packet);
+                receiving_socket2.receive(packet);
 
     
                 ByteBuffer headerBuffer = ByteBuffer.wrap(buffer, 0, 4);
@@ -367,78 +358,97 @@ public class TextRecieverThread {
             }
         }
     
-        receiving_socket3.close();
-        System.out.println("Timeout/Fill count: " + count);
+        receiving_socket2.close();
         System.out.println("Received packets: " + receivedSequenceNumbers.size());
         System.out.println(receivedSequenceNumbers);
     }
     
 
-
-
-public static void socket3() throws Exception {
-    int PORT = 55557;
-    receiving_socket3 = new DatagramSocket3(PORT);
-    InetAddress clientIP = InetAddress.getByName("localhost");
-
-    boolean running = true;
-    AudioPlayer player = new AudioPlayer();
-    int encryptkey = 2;
-    int authkey = 12;
-    int highestSeqNum = 0;
-    int packetsRecieved = 0;
-    ArrayList<Short> totalPacketNums = new ArrayList<>();
-
-    receiving_socket3.setSoTimeout(5000);
-    while (running = true) {
-        try {
-            byte[] buffer = new byte[516]; 
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-            try{
+    public static void socket3() throws Exception {
+        int PORT = 55557;
+        receiving_socket3 = new DatagramSocket3(PORT);
+    
+        AudioPlayer player = new AudioPlayer();
+        int encryptkey = 15;
+    
+        PriorityQueue<PacketInfo> jitterBuffer = new PriorityQueue<>(
+            (a, b) -> Integer.compare(a.sequenceNum, b.sequenceNum)
+        );
+    
+        HashSet<Integer> receivedSequenceNumbers = new HashSet<>();
+        int preSeqNum = -1;
+        int highestSeqNum = 0;
+        int jitterBufferSize = 6; // Store up to 6 packets
+        int packets = 0;
+        boolean running = true;
+        int count = 0;
+        byte[] lastAudio = null;
+    
+        while (running) {
+            try {
+                byte[] buffer = new byte[516];
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket3.receive(packet);
-            }catch(SocketTimeoutException e){
-                break;
+    
+                // Header parsing and duplicate check
+                ByteBuffer headerBuffer = ByteBuffer.wrap(buffer, 0, 4);
+                int sequenceNum = headerBuffer.getShort();
+                if (receivedSequenceNumbers.contains(sequenceNum)) {
+                    continue;
+                }
+                short authKey = headerBuffer.getShort();
+    
+                // Decryption
+                int total = packet.getLength() - 4;
+                ByteBuffer cipherText = ByteBuffer.wrap(buffer, 4, total);
+                ByteBuffer unwrapDecrypt = ByteBuffer.allocate(total);
+                for (int j = 0; j < total / 4; j++) {
+                    int fourByte = cipherText.getInt();
+                    fourByte = fourByte ^ encryptkey;
+                    unwrapDecrypt.putInt(fourByte);
+                }
+                byte[] decryptedBlock = unwrapDecrypt.array();
+    
+                receivedSequenceNumbers.add(sequenceNum);
+                highestSeqNum = Math.max(highestSeqNum, sequenceNum);
+    
+                jitterBuffer.offer(new PacketInfo(sequenceNum, decryptedBlock));
+    
+                if (jitterBuffer.size() >= jitterBufferSize) {
+                    PacketInfo earliestPacket = jitterBuffer.peek();
+                    if (earliestPacket.sequenceNum <= highestSeqNum - jitterBufferSize + 1) {
+                        PacketInfo toPlay = jitterBuffer.poll();
+                        player.playBlock(toPlay.block);
+                        lastAudio = toPlay.block;
+                        preSeqNum = toPlay.sequenceNum;
+                        packets++;
+                    }
+                }
+    
+                while (!jitterBuffer.isEmpty() && jitterBuffer.peek().sequenceNum > preSeqNum + 3) {
+                    System.out.println("Packet loss detected. Playing last audio.");
+                    if (lastAudio != null) {
+                        player.playBlock(lastAudio);
+                    }
+                    preSeqNum++;
+                    count++;
+                }
+    
+                while (!jitterBuffer.isEmpty() && jitterBuffer.peek().sequenceNum == preSeqNum + 1) {
+                    PacketInfo entry = jitterBuffer.poll();
+                    byte[] audioBlock = entry.block;
+                    player.playBlock(audioBlock);
+                    lastAudio = audioBlock;
+                    preSeqNum = entry.sequenceNum;
+                    packets++;
+                }
+    
+            } catch (IOException e) {
+                System.out.println("ERROR: TextReceiver encountered an issue!");
+                e.printStackTrace();
             }
-
-            System.out.println(packet.getLength());
-            ByteBuffer headerBuffer = ByteBuffer.wrap(buffer, 0, 4);
-            short authKey = headerBuffer.getShort();
-            short sequenceNum = headerBuffer.getShort();
-            totalPacketNums.add(sequenceNum);
-            
-
-
-            highestSeqNum =sequenceNum;
-            int total = packet.getLength() - 4;
-            ByteBuffer cipherText = ByteBuffer.wrap(buffer, 4, total);
-            ByteBuffer unwrapDecrypt = ByteBuffer.allocate(total);
-            for (int j = 0; j < total / 4; j++) {
-                int fourByte = cipherText.getInt();
-                fourByte = fourByte ^ encryptkey; 
-                unwrapDecrypt.putInt(fourByte);
-            }
-            byte[] decryptedBlock = unwrapDecrypt.array();
-
-
-           
-            player.playBlock(decryptedBlock);
-
-            packetsRecieved++;
-
-            
-        } catch (IOException e) {
-            System.out.println("ERROR: TextReceiver encountered an issue!");
-            e.printStackTrace();
         }
+    
+        receiving_socket3.close();
     }
-
-
-    receiving_socket3.close();
-
-    System.out.println("Packets recieevd: "+ packetsRecieved);
-    System.out.println("highest Packets recieevd: "+ highestSeqNum);
-    System.out.println(totalPacketNums);
-
-
-}
 }
