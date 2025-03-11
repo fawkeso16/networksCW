@@ -3,8 +3,7 @@ import java.nio.ByteBuffer;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
+
 import java.util.Random;
 import java.util.concurrent.TimeoutException;
 
@@ -53,15 +52,14 @@ public class TextRecieverThread {
     
 
 
-    private static byte[] generateSimpleMAC(byte[] data, byte[] key) {
-        if (data.length != 512) {
-            throw new IllegalArgumentException("Data must be 512 bytes.");
-        }
+    //xor our data with our key, then take thencreate a 32byte array of data consisting of every other bytes first bit.
+    private static byte[] generateSimpleMAC(byte[] data, int key) {
+
     
         byte[] xored = new byte[512];
     
         for (int i = 0; i < 512; i++) {
-            xored[i] = (byte) (data[i] ^ key[i % key.length]);
+            xored[i] = (byte) (data[i] ^ key);
         }
     
         byte[] mac = new byte[32];
@@ -86,8 +84,6 @@ public class TextRecieverThread {
         byte[] transposedAudio2 = new byte[512];
         byte[] transposedAudioXOR = new byte[512];
         byte[] original = new byte[512];
-    
-
     
         for (int i = 0; i < 512; i++) {
             int newIndex = ((i - key + 512) % 512); 
@@ -185,12 +181,12 @@ public class TextRecieverThread {
                 ByteBuffer audioBuffer = ByteBuffer.wrap(alldata.array(), 2, 512);
                 audioBuffer.get(audioData);
 
-                byte[] senderhash = new byte[32];
-                ByteBuffer hmacBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
-                hmacBuffer.get(senderhash);
+                byte[] sendermac = new byte[32];
+                ByteBuffer macBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
+                macBuffer.get(sendermac);
 
-                byte[] reciverhash = generateSimpleMAC(audioData, secretBytes);
-                if (!Arrays.equals(senderhash, reciverhash)) {
+                byte[] reciver = generateSimpleMAC(audioData, sharedSecret.intValue());
+                if (!Arrays.equals(sendermac, reciver)) {
                     System.out.println("No auth");
                 }
 
@@ -382,22 +378,27 @@ public class TextRecieverThread {
         HashSet<Integer> receivedSequenceNumbers = new HashSet<>();
         int preSeqNum = -1;
         int highestSeqNum = 0;
-        int jitterBufferSize = 2;
-        int packets=0;
-    
+        int jitterBufferSize = 6; // Store up to 6 packets
+        int packets = 0;
+        boolean running = true;
         int count = 0;
+        byte[] lastAudio = null;
     
-        while (packets < 1000) {
+        while (running) {
             try {
                 byte[] buffer = new byte[516];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket3.receive(packet);
-
     
+                // Header parsing and duplicate check
                 ByteBuffer headerBuffer = ByteBuffer.wrap(buffer, 0, 4);
                 int sequenceNum = headerBuffer.getShort();
+                if (receivedSequenceNumbers.contains(sequenceNum)) {
+                    continue;
+                }
                 short authKey = headerBuffer.getShort();
     
+                // Decryption
                 int total = packet.getLength() - 4;
                 ByteBuffer cipherText = ByteBuffer.wrap(buffer, 4, total);
                 ByteBuffer unwrapDecrypt = ByteBuffer.allocate(total);
@@ -408,22 +409,28 @@ public class TextRecieverThread {
                 }
                 byte[] decryptedBlock = unwrapDecrypt.array();
     
-                if (receivedSequenceNumbers.contains(sequenceNum)) {
-                    continue;
-                }
                 receivedSequenceNumbers.add(sequenceNum);
-                System.out.println(sequenceNum);
                 highestSeqNum = Math.max(highestSeqNum, sequenceNum);
     
                 jitterBuffer.offer(new PacketInfo(sequenceNum, decryptedBlock));
     
-            
+                if (jitterBuffer.size() >= jitterBufferSize) {
+                    PacketInfo earliestPacket = jitterBuffer.peek();
+                    if (earliestPacket.sequenceNum <= highestSeqNum - jitterBufferSize + 1) {
+                        PacketInfo toPlay = jitterBuffer.poll();
+                        player.playBlock(toPlay.block);
+                        lastAudio = toPlay.block;
+                        preSeqNum = toPlay.sequenceNum;
+                        packets++;
+                    }
+                }
+    
                 while (!jitterBuffer.isEmpty() && jitterBuffer.peek().sequenceNum > preSeqNum + 3) {
-                    System.out.println("Packet loss burst detected. Playing last audio.");
+                    System.out.println("Packet loss detected. Playing last audio.");
                     if (lastAudio != null) {
                         player.playBlock(lastAudio);
                     }
-                    preSeqNum++; 
+                    preSeqNum++;
                     count++;
                 }
     
@@ -431,46 +438,17 @@ public class TextRecieverThread {
                     PacketInfo entry = jitterBuffer.poll();
                     byte[] audioBlock = entry.block;
                     player.playBlock(audioBlock);
-                    packets++;
-
                     lastAudio = audioBlock;
                     preSeqNum = entry.sequenceNum;
+                    packets++;
                 }
-    
-               
-                if (jitterBuffer.size() > jitterBufferSize) {
-                    while (jitterBuffer.size() > 1) {
-                        jitterBuffer.poll();
-                    }
-                    PacketInfo latest = jitterBuffer.poll();
-                    player.playBlock(latest.block);
-
-                    lastAudio = latest.block;
-                    preSeqNum = latest.sequenceNum;
-                }
-
-                packets++;
     
             } catch (IOException e) {
                 System.out.println("ERROR: TextReceiver encountered an issue!");
                 e.printStackTrace();
             }
-            
         }
-        int[] hi = new int[receivedSequenceNumbers.size()];
-        int index = 0;
-        for (Integer seqNum : receivedSequenceNumbers) {
-            hi[index++] = seqNum; // Unbox Integer to int
-        }
-        
-        // Print the array
-        System.out.println("Array contents:" + Arrays.toString(hi));
-    
     
         receiving_socket3.close();
-        // System.out.println(packets);
-        System.out.println("Received packets: " + receivedSequenceNumbers.size());
-        System.out.println("HashSet contents:");
-       
-}
+    }
 }

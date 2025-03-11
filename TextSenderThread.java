@@ -32,15 +32,12 @@ public class TextSenderThread {
     }
 
 
-    private static byte[] generateSimpleMAC(byte[] data, byte[] key) {
-        if (data.length != 512) {
-            throw new IllegalArgumentException("Data must be exactly 512 bytes.");
-        }
+    private static byte[] generateSimpleMAC(byte[] data, int key) {
     
         byte[] xored = new byte[512];
     
         for (int i = 0; i < 512; i++) {
-            xored[i] = (byte) (data[i] ^ key[i % key.length]);
+            xored[i] = (byte) (data[i] ^ key);
         }
     
         byte[] mac = new byte[32];
@@ -167,13 +164,12 @@ public class TextSenderThread {
 
 
                 byte[] encryptedAudioData = EncryptData(audio1, key, newKey);
-                byte[] secretBytes = ByteBuffer.allocate(4).putInt(key).array();
-                byte[] hmac = generateSimpleMAC(encryptedAudioData, secretBytes); 
+                byte[] mac = generateSimpleMAC(encryptedAudioData, sharedSecret.intValue()); 
 
-                ByteBuffer finalPacketBuffer = ByteBuffer.allocate(514 + hmac.length); 
+                ByteBuffer finalPacketBuffer = ByteBuffer.allocate(514 + mac.length); 
                 finalPacketBuffer.putShort(packetSequenceNum);         
                 finalPacketBuffer.put(encryptedAudioData);  
-                finalPacketBuffer.put(hmac);  
+                finalPacketBuffer.put(mac);  
 
                 byte[] finalPacketData = finalPacketBuffer.array();  
 
@@ -353,7 +349,7 @@ public static void socket3() throws Exception {
             DatagramPacket packet1 = new DatagramPacket(encryptedBlock1, encryptedBlock1.length, clientIP, PORT);
 
             sending_socket3.send(packet1);  
-            sending_socket3.send(packet1); 
+            // sending_socket3.send(packet1); 
             sending_socket3.send(packet1);  
             
             
@@ -361,7 +357,7 @@ public static void socket3() throws Exception {
     } catch (Exception e) {
         e.printStackTrace();
     }
-    System.out.println("sent"+packetSequenceNum);
+    // System.out.println("sent"+packetSequenceNum);
 
     }
     sending_socket3.close();
