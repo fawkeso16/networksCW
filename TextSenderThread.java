@@ -39,7 +39,6 @@ public class TextSenderThread {
     
         byte[] xored = new byte[512];
     
-        // XOR each byte of data with the key (cycling if key is shorter)
         for (int i = 0; i < 512; i++) {
             xored[i] = (byte) (data[i] ^ key[i % key.length]);
         }
@@ -47,12 +46,11 @@ public class TextSenderThread {
         byte[] mac = new byte[32];
         int bitIndex = 0;
     
-        // Extract first bit of every other byte
         for (int i = 0; i < 512; i += 2) {
-            int bit = (xored[i] >> 7) & 1; // Get MSB (first bit)
-            mac[bitIndex / 8] |= (bit << (7 - (bitIndex % 8))); // Pack bits into bytes
+            int bit = (xored[i] >> 7) & 1; 
+            mac[bitIndex / 8] |= (bit << (7 - (bitIndex % 8))); 
             bitIndex++;
-            if (bitIndex == 256) break; // Stop after 256 bits (32 bytes)
+            if (bitIndex == 256) break; 
         }
     
         return mac;
@@ -237,9 +235,9 @@ public class TextSenderThread {
                 byte[] encryptedBlock1 = packetBuffer1.array();
                 DatagramPacket packet1 = new DatagramPacket(encryptedBlock1, encryptedBlock1.length, clientIP, PORT);
 
-                sending_socket3.send(packet1);  // Packet 1
-                sending_socket3.send(packet1);  // Packet 1
-                // sending_socket3.send(packet1);  // Packet 1
+                sending_socket3.send(packet1);  
+                sending_socket3.send(packet1);  
+                // sending_socket3.send(packet1); 
 
 
                 // Packet 2
@@ -256,9 +254,9 @@ public class TextSenderThread {
                 }
                 byte[] encryptedBlock2 = packetBuffer2.array();
                 DatagramPacket packet2 = new DatagramPacket(encryptedBlock2, encryptedBlock2.length, clientIP, PORT);
-                sending_socket3.send(packet2);  // Packet 2
-                sending_socket3.send(packet2);  // Packet 2
-                // sending_socket3.send(packet2);  // Packet 2
+                sending_socket3.send(packet2); 
+                sending_socket3.send(packet2);  
+                // sending_socket3.send(packet2);  
 
                 // Packet 3
                 ByteBuffer packetBuffer3 = ByteBuffer.allocate(516);
@@ -274,9 +272,9 @@ public class TextSenderThread {
                 }
                 byte[] encryptedBlock3 = packetBuffer3.array();
                 DatagramPacket packet3 = new DatagramPacket(encryptedBlock3, encryptedBlock3.length, clientIP, PORT);
-                sending_socket3.send(packet3);  // Packet 3
-                sending_socket3.send(packet3);  // Packet 3
-                // sending_socket3.send(packet3);  // Packet 3
+                sending_socket3.send(packet3);  
+                sending_socket3.send(packet3);  
+                // sending_socket3.send(packet3);  
 
 
                 // Packet 4
@@ -294,10 +292,9 @@ public class TextSenderThread {
                 byte[] encryptedBlock4 = packetBuffer4.array();
                 DatagramPacket packet4 = new DatagramPacket(encryptedBlock4, encryptedBlock4.length, clientIP, PORT);
 
-                sending_socket3.send(packet4);  // Packet 4
-                sending_socket3.send(packet4);  // Packet 4
-                // sending_socket3.send(packet4);  // Packet 4
-
+                sending_socket3.send(packet4); 
+                sending_socket3.send(packet4); 
+                // sending_socket3.send(packet4); 
 
                 
     } catch (Exception e) {
