@@ -452,3 +452,88 @@ public class TextRecieverThread {
         receiving_socket3.close();
     }
 }
+
+public static void socket4() throws Exception {
+        int PORT = 55557;
+        receiving_socket4 = new DatagramSocket4(PORT);
+        InetAddress clientIP = InetAddress.getByName("localhost");
+
+       
+        Random random = new Random();
+        privateKey = BigInteger.valueOf(random.nextInt(21) + 1);
+        publicKey = SmallNum.modPow(privateKey, Prime);
+        System.out.println("Receiver Private Key: " + privateKey);
+        System.out.println("Receiver Public Key: " + publicKey);
+
+        byte[] received = new byte[4];
+        DatagramPacket receiverKeyPacket = new DatagramPacket(received, received.length);
+        receiving_socket4.receive(receiverKeyPacket);  
+
+        ByteBuffer pubKeyBuffer = ByteBuffer.wrap(received);
+        int receivedPublicKeyInt = pubKeyBuffer.getInt();
+        BigInteger receivedPublicKey = BigInteger.valueOf(receivedPublicKeyInt);
+        System.out.println("Receiver received Public Key: " + receivedPublicKey);
+
+        sharedSecret = receivedPublicKey.modPow(privateKey, Prime);
+        System.out.println("reciever shared Secret: " + sharedSecret);
+
+
+        ByteBuffer keyPacket = ByteBuffer.allocate(4);
+        keyPacket.putInt(publicKey.intValue());
+        byte[] shared = keyPacket.array();
+
+        DatagramPacket finalKeyPacket = new DatagramPacket(shared, shared.length, receiverKeyPacket.getAddress(), receiverKeyPacket.getPort());
+        receiving_socket4.send(finalKeyPacket);
+        System.out.println("Receiver sent Public Key: " + publicKey.intValue());
+
+
+        int key = sharedSecret.intValue();
+        int nextadd = (int)(Math.log(key) / Math.log(2));
+        int rawNewKey = (nextadd + 1) * key * (key * key - (4 * key) - 1);
+        int newKey = Math.abs(rawNewKey) % 65536; 
+
+
+        AudioPlayer player = new AudioPlayer();
+        int highestSeqNum = 0;
+
+        while (highestSeqNum < 1000) {
+            try {
+                byte[] buffer = new byte[548];
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                receiving_socket4.receive(packet);
+                
+
+                ByteBuffer alldata = ByteBuffer.wrap(buffer, 0, 546);
+                ByteBuffer packetData = ByteBuffer.wrap(alldata.array(), 0, 514);
+                int sequenceNum = packetData.getShort();
+
+                byte[] audioData = new byte[512];
+                ByteBuffer audioBuffer = ByteBuffer.wrap(alldata.array(), 2, 512);
+                audioBuffer.get(audioData);
+
+                byte[] sendermac = new byte[32];
+                ByteBuffer macBuffer = ByteBuffer.wrap(alldata.array(), 514, 32);
+                macBuffer.get(sendermac);
+
+
+
+                byte[] reciver = generateSimpleMAC(audioData, sharedSecret.intValue());
+                if (!Arrays.equals(sendermac, reciver)) {
+                    System.out.println("No auth");
+                    if(lastAudio!=null)player.playBlock(lastAudio);
+                    continue;
+                }
+
+                byte[] decryptedData = DecryptData(audioData, key, newKey);
+
+                player.playBlock(decryptedData);
+
+                
+            } catch (IOException e) {
+                System.out.println("ERROR: TextReceiver encountered an issue!");
+                e.printStackTrace();
+            }
+        }
+        receiving_socket4.close();
+    }
+}
