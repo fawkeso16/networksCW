@@ -362,7 +362,96 @@ public static void socket3() throws Exception {
     }
     sending_socket3.close();
 }
+
+
+    
+
+    public static void socket4() throws Exception {
+        int PORT = 55557;            
+        InetAddress clientIP = InetAddress.getByName("139.222.172.14");
+        try {
+            sending_socket4 = new DatagramSocket4(PORT);
+        } catch (SocketException e) {
+            System.out.println("ERROR: TextSender: Could not open UDP socket to send from.");
+            e.printStackTrace();
+            System.exit(0);
+        }
+        
+
+        SecureRandom random = new SecureRandom();
+        privateKey = new BigInteger(5, random).add(BigInteger.ONE); 
+        publicKey = SmallNum.modPow(privateKey, Prime);
+        System.out.println("Sender Private Key: " + privateKey);
+        System.out.println("Sender Public Key: " + publicKey);
+
+        ByteBuffer keyPacket = ByteBuffer.allocate(4);
+        keyPacket.putInt(publicKey.intValue());
+        byte[] shared = keyPacket.array();
+        DatagramPacket finalKeyPacket = new DatagramPacket(shared, shared.length, clientIP, PORT);
+        sending_socket4.send(finalKeyPacket);
+        System.out.println("Sender sent Public Key: " + publicKey.intValue());
+
+        byte[] received = new byte[4];
+        DatagramPacket receiverKeyPacket = new DatagramPacket(received, received.length);
+        sending_socket4.receive(receiverKeyPacket);  
+        System.out.println("HI");
+
+        if (!receiverKeyPacket.getAddress().equals(clientIP)) {
+            System.out.println("sender received own");
+            return;
+        }
+        
+        ByteBuffer pubKeyBuffer = ByteBuffer.wrap(received);
+        BigInteger receivedPublicKey = BigInteger.valueOf(pubKeyBuffer.getInt());
+        System.out.println("Sender received Public Key: " + receivedPublicKey);
+
+        sharedSecret = receivedPublicKey.modPow(privateKey, Prime);
+        System.out.println("Sender Shared Secret: " + sharedSecret);
+        
+        AudioRecorder recorder = new AudioRecorder();
+        boolean running = true;
+        short packetSequenceNum = 0;
+        
+        int key = sharedSecret.intValue();
+        int nextadd = (int)(Math.log(key) / Math.log(2));
+        int rawNewKey = (nextadd + 1) * key * (key * key - (4 * key) - 1);
+        int newKey = Math.abs(rawNewKey) % 65536; 
+
+        while (running) {
+            try {
+                byte[] block1 = recorder.getBlock();
+                byte[] audio1 = new byte[512];
+                System.arraycopy(block1, 0, audio1, 0, 512);
+
+                ByteBuffer packetBuffer1 = ByteBuffer.allocate(514); 
+                packetSequenceNum++;
+                packetBuffer1.putShort(packetSequenceNum);
+
+
+                byte[] encryptedAudioData = EncryptData(audio1, key, newKey);
+                byte[] mac = generateSimpleMAC(encryptedAudioData, sharedSecret.intValue()); 
+
+                ByteBuffer finalPacketBuffer = ByteBuffer.allocate(514 + mac.length); 
+                finalPacketBuffer.putShort(packetSequenceNum);         
+                finalPacketBuffer.put(encryptedAudioData);  
+                finalPacketBuffer.put(mac);  
+
+                byte[] finalPacketData = finalPacketBuffer.array();  
+
+                DatagramPacket finalPacket = new DatagramPacket(finalPacketData, finalPacketData.length, clientIP, PORT);
+                sending_socket4.send(finalPacket);
+
+                System.out.println("sent");
+                
+            } catch (IOException e) {
+                System.out.println("ERROR: TextSender: Some random IO error occurred!");
+                e.printStackTrace();
+            }
+        }
+        sending_socket4.close();
+    }
 }
+
 
 
 
