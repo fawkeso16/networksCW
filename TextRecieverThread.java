@@ -378,7 +378,7 @@ public class TextRecieverThread {
         HashSet<Integer> receivedSequenceNumbers = new HashSet<>();
         int preSeqNum = -1;
         int highestSeqNum = 0;
-        int jitterBufferSize = 6; // Store up to 6 packets
+        int jitterBufferSize = 6; 
         int packets = 0;
         boolean running = true;
         int count = 0;
@@ -390,7 +390,7 @@ public class TextRecieverThread {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 receiving_socket3.receive(packet);
     
-                // Header parsing and duplicate check
+                
                 ByteBuffer headerBuffer = ByteBuffer.wrap(buffer, 0, 4);
                 int sequenceNum = headerBuffer.getShort();
                 if (receivedSequenceNumbers.contains(sequenceNum)) {
@@ -398,7 +398,7 @@ public class TextRecieverThread {
                 }
                 short authKey = headerBuffer.getShort();
     
-                // Decryption
+                //
                 int total = packet.getLength() - 4;
                 ByteBuffer cipherText = ByteBuffer.wrap(buffer, 4, total);
                 ByteBuffer unwrapDecrypt = ByteBuffer.allocate(total);
